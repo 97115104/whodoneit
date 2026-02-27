@@ -1,4 +1,6 @@
+console.log('[DEBUG] uiRenderer.js loading...');
 const UIRenderer = (() => {
+    console.log('[DEBUG] UIRenderer IIFE executing...');
     // SVG icon definitions
     function createSvgIcon(type) {
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -131,8 +133,15 @@ const UIRenderer = (() => {
         else if (classification === 'ai') badge.classList.add('classification-ai');
         else badge.classList.add('classification-collaboration');
 
-        // Summary
-        document.getElementById('detection-summary').textContent = result.summary || '';
+        // Summary - include local analysis info if available
+        let summaryText = result.summary || '';
+        if (result.local_analysis?.slop_score !== undefined) {
+            summaryText += ` Local pattern analysis scored ${result.local_analysis.slop_score}/100.`;
+        }
+        if (result.analysis_note) {
+            summaryText += ` ${result.analysis_note}`;
+        }
+        document.getElementById('detection-summary').textContent = summaryText;
 
         // Confidence bar
         const humanProb = result.human_probability || (100 - score);
@@ -233,6 +242,16 @@ const UIRenderer = (() => {
         lines.push(`Confidence: ${result.confidence}`);
         lines.push(`Human Probability: ${result.human_probability}%`);
         lines.push(`AI Probability: ${result.ai_probability}%`);
+        
+        if (result.local_analysis) {
+            lines.push('');
+            lines.push(`LOCAL SLOP ANALYSIS`);
+            lines.push(`Slop Score: ${result.local_analysis.slop_score}/100`);
+            lines.push(`Local Confidence: ${result.local_analysis.confidence}`);
+            if (result.local_analysis.explanation) {
+                lines.push(`Explanation: ${result.local_analysis.explanation}`);
+            }
+        }
         lines.push('');
 
         lines.push(result.summary || '');
@@ -273,32 +292,96 @@ const UIRenderer = (() => {
         const container = document.getElementById('highlighted-content');
         container.innerHTML = '';
 
+        if (!originalContent) {
+            container.innerHTML = '<p style="color:#666;">No content to display.</p>';
+            return;
+        }
+
         const passages = result.highlighted_passages || [];
 
-        if (passages.length === 0 || !originalContent) {
+        // If no passages, generate them locally using slop detector
+        if (passages.length === 0) {
             // No highlights — classify entire content based on overall classification
             const overallClass = result.classification === 'ai' ? 'highlight-ai' :
                                  result.classification === 'human' ? 'highlight-human' :
                                  'highlight-collaboration';
-            container.innerHTML = `<span class="${overallClass}">${escapeHtml(originalContent).replace(/\n/g, '<br>')}</span>`;
+            const tooltip = result.summary || 'Overall classification';
+            container.innerHTML = `<span class="${overallClass}" title="${escapeHtml(tooltip)}">${escapeHtml(originalContent).replace(/\n/g, '<br>')}</span>`;
             return;
         }
 
-        // Build highlighted version from passages
+        // Always use position-based highlighting to ensure ALL text is shown
+        // This finds each passage in the original content and fills gaps
         let html = '';
-        passages.forEach(p => {
-            if (!p.text) return;
-
+        let lastIndex = 0;
+        
+        // Sort passages by their position in the original text
+        const sortedPassages = [...passages].map(p => {
+            const idx = originalContent.indexOf(p.text || '');
+            return { ...p, foundIndex: idx };
+        }).filter(p => p.foundIndex !== -1).sort((a, b) => a.foundIndex - b.foundIndex);
+        
+        for (const p of sortedPassages) {
+            if (!p.text) continue;
+            
+            const passageIndex = p.foundIndex;
+            
+            // Skip if this passage would overlap with already processed text
+            if (passageIndex < lastIndex) continue;
+            
+            // Add any unhighlighted text before this passage
+            if (passageIndex > lastIndex) {
+                const gap = originalContent.slice(lastIndex, passageIndex);
+                // Analyze the gap to determine its classification
+                const gapClass = getGapClassification(gap, result);
+                html += `<span class="${gapClass}" title="Uncategorized segment">${escapeHtml(gap).replace(/\n/g, '<br>')}</span>`;
+            }
+            
             const classType = p.classification === 'ai' ? 'highlight-ai' :
                               p.classification === 'human' ? 'highlight-human' :
+                              p.classification === 'unclear' ? 'highlight-unclear' :
                               'highlight-collaboration';
-
-            const escapedText = escapeHtml(p.text).replace(/\n/g, '<br>');
-            const tooltip = escapeHtml(p.reason || '');
-            html += `<span class="${classType}" title="${tooltip}">${escapedText}</span>`;
-        });
-
+            let tooltip = p.reason || '';
+            if (p.score !== undefined) {
+                tooltip += tooltip ? ` (Score: ${p.score}/100)` : `Score: ${p.score}/100`;
+            }
+            html += `<span class="${classType}" title="${escapeHtml(tooltip)}">${escapeHtml(p.text).replace(/\n/g, '<br>')}</span>`;
+            lastIndex = passageIndex + p.text.length;
+        }
+        
+        // Add any remaining text after the last passage
+        if (lastIndex < originalContent.length) {
+            const remainder = originalContent.slice(lastIndex);
+            const gapClass = getGapClassification(remainder, result);
+            html += `<span class="${gapClass}" title="Uncategorized segment">${escapeHtml(remainder).replace(/\n/g, '<br>')}</span>`;
+        }
+        
+        // If no passages were found in the text, show entire content with overall classification
+        if (html === '') {
+            const overallClass = result.classification === 'ai' ? 'highlight-ai' :
+                                 result.classification === 'human' ? 'highlight-human' :
+                                 'highlight-collaboration';
+            html = `<span class="${overallClass}" title="${escapeHtml(result.summary || 'Overall classification')}">${escapeHtml(originalContent).replace(/\n/g, '<br>')}</span>`;
+        }
+        
         container.innerHTML = html;
+    }
+    
+    // Determine classification for gap text based on overall result
+    function getGapClassification(gapText, result) {
+        // Use local slop detector if available for more accurate gap classification
+        if (typeof SlopDetector !== 'undefined' && gapText.trim().length > 20) {
+            const gapAnalysis = SlopDetector.analyze(gapText);
+            if (gapAnalysis.score >= 65) return 'highlight-ai';
+            if (gapAnalysis.score <= 35) return 'highlight-human';
+            if (gapAnalysis.score >= 40 && gapAnalysis.score <= 60) return 'highlight-unclear';
+            return 'highlight-collaboration';
+        }
+        // Fallback to overall classification for short gaps
+        if (result.detection_score >= 65) return 'highlight-ai';
+        if (result.detection_score <= 35) return 'highlight-human';
+        if (result.detection_score >= 40 && result.detection_score <= 60) return 'highlight-unclear';
+        return 'highlight-collaboration';
     }
 
     // --- JSON Tab ---
@@ -410,7 +493,7 @@ const UIRenderer = (() => {
             .replace(/\b(true|false|null)\b/g, '<span class="json-keyword">$1</span>');
     }
 
-    return {
+    const exports = {
         showLoading,
         hideLoading,
         showError,
@@ -420,4 +503,7 @@ const UIRenderer = (() => {
         setupCopyButtons,
         setupDownloadButtons
     };
+    console.log('[DEBUG] UIRenderer exports:', Object.keys(exports));
+    return exports;
 })();
+console.log('[DEBUG] UIRenderer loaded:', typeof UIRenderer);

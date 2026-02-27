@@ -2,8 +2,10 @@
  * URL Content Extractor
  * Fetches and extracts main content from blog posts and articles.
  */
+console.log('[DEBUG] urlExtractor.js loading...');
 const UrlExtractor = (function() {
     'use strict';
+    console.log('[DEBUG] UrlExtractor IIFE executing...');
 
     // CORS proxies to try (in order)
     const CORS_PROXIES = [
@@ -192,7 +194,9 @@ const UrlExtractor = (function() {
         return result;
     }
 
+    console.log('[DEBUG] UrlExtractor exports: [extract]');
     return {
         extract
     };
 })();
+console.log('[DEBUG] UrlExtractor loaded:', typeof UrlExtractor);

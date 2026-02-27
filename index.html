@@ -36,55 +36,69 @@
                 </ul>
                 <p>Use this tool as one input among many when evaluating content authenticity. The analysis is most useful for understanding <em>why</em> content exhibits certain patterns, not for definitive authorship claims.</p>
 
-                <h4>What you get</h4>
-                <p>Each analysis returns a Detection Score (0-100, where 0 = definitely human and 100 = definitely AI), a classification (Human, AI, or Collaboration), confidence level, detailed reasoning across multiple detection dimensions, highlighted passages with explanations, and suggestions for attestation via attest.ink.</p>
-
-                <h4>How it works</h4>
-                <p>There are two ways to analyze content:</p>
+                <h4>Two-stage analysis</h4>
+                <p>This tool uses a two-stage detection system for improved accuracy:</p>
                 <ol>
-                    <li><strong>Paste content directly</strong> — Enter text in the Content to Analyze field and click <strong>Analyze Content</strong>.</li>
-                    <li><strong>Fetch from URL</strong> — Enter a blog post or article URL, then click <strong>Fetch</strong> to extract the main content, or <strong>Fetch & Analyze</strong> to extract and immediately analyze.</li>
+                    <li><strong>Local pattern detection (Slop Detector)</strong> — Fast heuristic-based analysis that scans for known AI writing patterns like formulaic transitions, antithetical constructions, AI vocabulary clusters, em dash overuse, and more. Also detects human markers like informal language, personal anecdotes, and self-corrections.</li>
+                    <li><strong>Semantic analysis (LLM)</strong> — Deep analysis using AI to understand context, meaning, and subtle patterns that heuristics might miss. The local analysis results guide the semantic analysis for better calibration.</li>
                 </ol>
-                <p>The tool examines text across multiple dimensions including vocabulary patterns, sentence structure, coherence, factual claims, stylistic markers, and more. It returns a probabilistic assessment with detailed explanations.</p>
 
-                <h4>Detection dimensions</h4>
-                <p>The analysis evaluates:</p>
+                <h4>AI patterns detected (slop indicators)</h4>
+                <p>The local detector scans for research-backed AI writing patterns including:</p>
                 <ul>
-                    <li><strong>Vocabulary patterns</strong> — Word choice, lexical diversity, and unusual terms</li>
-                    <li><strong>Sentence structure</strong> — Length variation, complexity, and rhythm</li>
-                    <li><strong>Coherence &amp; flow</strong> — Logical transitions and narrative consistency</li>
-                    <li><strong>Stylistic markers</strong> — Personal voice, idioms, and cultural references</li>
-                    <li><strong>Factual patterns</strong> — Hedging, certainty claims, and verifiable statements</li>
-                    <li><strong>Structural patterns</strong> — Formatting, organization, and formulaic elements</li>
-                    <li><strong>Error patterns</strong> — Typos, grammatical quirks, and inconsistencies</li>
-                    <li><strong>Temperature markers</strong> — Predictability and creative variation</li>
+                    <li><strong>Critical:</strong> Antithetical constructions ("It's not about X, it's about Y"), sycophantic openings ("Great question!"), colon declarations, AI self-references</li>
+                    <li><strong>High:</strong> Formulaic transitions (However, Moreover, Furthermore), formulaic openers/closers, em dash overuse, pseudo-profound statements</li>
+                    <li><strong>Medium:</strong> Intensifier clusters (incredibly, extremely), hedge words, AI vocabulary (landscape, ecosystem, leverage), balanced perspectives, passive voice</li>
                 </ul>
 
-                <h4>Output tabs</h4>
-                <p>The <strong>Analysis</strong> tab shows the overall score, classification, and detailed reasoning. The <strong>Highlights</strong> tab shows the original content with color-coded passages indicating AI-like (orange) or human-like (green) characteristics. The <strong>JSON</strong> tab provides the raw analysis data for programmatic use.</p>
+                <h4>Human markers detected</h4>
+                <ul>
+                    <li>Informal language (gonna, wanna, btw, lol)</li>
+                    <li>Personal anecdotes and specific details</li>
+                    <li>Genuine uncertainty expressions</li>
+                    <li>Colloquialisms and emotional authenticity</li>
+                    <li>Self-corrections and tangents</li>
+                </ul>
 
-                <h4>API providers</h4>
-                <p><strong>Puter GPT-OSS</strong> is the default and is completely free with no API key required. It uses Puter's user-pays model.</p>
-                <p><strong>OpenRouter</strong> is recommended for users who want access to hundreds of models through a single API key. CORS-friendly.</p>
-                <p><strong>Anthropic</strong>, <strong>OpenAI</strong>, <strong>Google Gemini</strong>, and <strong>Ollama</strong> are also supported.</p>
+                <h4>What you get</h4>
+                <p>Each analysis returns a Detection Score (0-100, where 0 = definitely human and 100 = definitely AI), a classification (Human, AI, or Collaboration), confidence level, detailed reasoning across multiple detection dimensions, highlighted passages with explanations, and the option to create cryptographic attestations via attest.ink.</p>
 
-                <h4>Attestation</h4>
-                <p>For content you want to formally attest as human-created or AI-assisted, use <a href="https://attest.ink" target="_blank" rel="noopener noreferrer">attest.ink</a>. It provides cryptographic attestations that can be independently verified.</p>
+                <h4>Creating attestations</h4>
+                <p>After analyzing content, you can create a cryptographic attestation that records the AI/human breakdown. This attestation:</p>
+                <ul>
+                    <li>Records the detection score and classification</li>
+                    <li>Can be independently verified via <a href="https://attest.ink" target="_blank" rel="noopener noreferrer">attest.ink</a></li>
+                    <li>Generates embeddable verification badges</li>
+                    <li>Provides a shareable verification link</li>
+                </ul>
 
-                <h4>URL routing</h4>
+                <h4>Email headers</h4>
+                <p>Click "Copy Email Header" to generate a formatted text block suitable for prepending to emails or newsletters, showing the AI/human analysis breakdown.</p>
+
+                <h4>Programmatic API</h4>
+                <p>Use the tool programmatically via JavaScript:</p>
+                <ul>
+                    <li><code>window.whodoneitAnalyze(content, options)</code> — Full analysis (returns Promise)</li>
+                    <li><code>window.whodoneitEmailHeader(content)</code> — Generate email header (synchronous, local only)</li>
+                </ul>
+                <p>Options for <code>whodoneitAnalyze</code>:</p>
+                <ul>
+                    <li><code>quick: true</code> — Use local heuristics only (fast, no API call)</li>
+                    <li><code>apiMode: 'puter'|'openrouter'|etc</code> — Select API provider</li>
+                </ul>
+
+                <h4>URL parameters</h4>
                 <p>The tool supports URL parameters for automation and sharing:</p>
                 <ul>
                     <li><code>?content=your text here</code> — Prefill the content input with text</li>
                     <li><code>?url=https://example.com/article</code> — Fetch content from a URL on page load</li>
                     <li><code>&amp;enter</code> — Add this to auto-analyze after loading content</li>
                 </ul>
-                <p>Examples:</p>
-                <ul>
-                    <li><code>?content=Hello world&amp;enter</code> — Analyze "Hello world" immediately</li>
-                    <li><code>?url=https://example.com/blog-post&amp;enter</code> — Fetch and analyze a blog post</li>
-                </ul>
 
-                <p>All processing happens through the selected API provider. No data is stored on any server.</p>
+                <h4>API providers</h4>
+                <p><strong>Puter GPT-OSS</strong> is the default and is completely free with no API key required. <strong>OpenRouter</strong> is recommended for users who want access to hundreds of models through a single API key (CORS-friendly). <strong>Anthropic</strong>, <strong>OpenAI</strong>, <strong>Google Gemini</strong>, and <strong>Ollama</strong> are also supported.</p>
+
+                <p>All processing happens through the selected API provider. No data is stored on any server. Local analysis runs entirely in your browser.</p>
             </div>
         </div>
     </div>
@@ -239,45 +253,40 @@ Environment="OLLAMA_ORIGINS=*"</pre>
 
         <hr class="section-divider">
 
-        <!-- URL Input Section -->
-        <div class="form-group">
-            <label for="url-input">Fetch Content from URL</label>
-            <div class="url-input-row">
-                <input type="url" id="url-input" placeholder="https://example.com/blog-post" />
-                <button id="fetch-url-btn" class="btn-small">Fetch</button>
-                <button id="fetch-analyze-btn" class="btn-small">Fetch & Analyze</button>
-            </div>
-            <p class="url-hint">Paste a blog post or article URL to automatically extract its main content.</p>
-        </div>
 
-        <!-- Input Section -->
-        <div class="form-group">
-            <label for="content-input">Content to Analyze</label>
-            <textarea id="content-input" placeholder="Paste the content you want to analyze for AI detection. The more text provided, the more accurate the analysis." rows="10"></textarea>
+        <!-- Unified Input Tabs -->
+        <div class="input-tabs" style="margin-bottom: 12px;">
+            <button class="input-tab active" data-tab="paste">Paste</button>
+            <button class="input-tab" data-tab="url">URL</button>
+            <button class="input-tab" data-tab="file">File</button>
+        </div>
+        <div class="input-tab-content" id="input-tab-paste">
+            <textarea id="content-input" placeholder="Paste or type content to analyze..." rows="10" style="width:100%;"></textarea>
             <div class="char-counter"><span id="char-count">0</span><span id="char-limit-display"> characters</span></div>
         </div>
-
-        <div id="share-content-row" class="share-idea-row">
-            <button id="btn-share-content" class="btn-small">Share Content</button>
-        </div>
-        <button id="analyze-btn" class="btn-primary">Analyze Content</button>
-
-        <!-- Share Modal -->
-        <div id="share-modal" class="modal-overlay hidden">
-            <div class="modal modal-small">
-                <div class="modal-header">
-                    <h3>Share Content</h3>
-                    <button id="btn-close-share" class="btn-modal-close">&times;</button>
-                </div>
-                <div class="modal-body">
-                    <p>Share this content as a prefilled analysis link.</p>
-                    <div class="share-options">
-                        <button id="share-url" class="btn-share-option">Copy link</button>
-                        <button id="share-url-enter" class="btn-share-option">Copy link with auto-analyze</button>
-                    </div>
-                    <div id="share-status" class="share-status hidden"></div>
+        <div class="input-tab-content hidden" id="input-tab-url">
+            <input type="url" id="url-input" placeholder="Paste a URL to fetch and analyze..." style="width:100%;margin-bottom:8px;" />
+            <button id="fetch-url-btn" class="btn-secondary" style="margin-bottom:8px;">Fetch Content</button>
+            <div id="fetched-content-accordion" class="accordion hidden">
+                <button class="accordion-toggle" id="toggle-fetched-content">
+                    <span class="accordion-icon">▶</span> View fetched content
+                </button>
+                <div class="accordion-content hidden" id="fetched-content-preview">
+                    <pre id="fetched-content-text" style="white-space: pre-wrap; font-size: 13px; max-height: 200px; overflow-y: auto; background: #f9f9f9; padding: 12px; border-radius: 4px; margin: 8px 0;"></pre>
                 </div>
             </div>
+        </div>
+        <div class="input-tab-content hidden" id="input-tab-file">
+            <input type="file" id="file-upload" accept=".txt,.md,.html,.htm" style="font-size: 13px; margin-bottom:8px;" />
+            <div class="char-counter"><span id="file-char-count">0</span><span> characters</span></div>
+        </div>
+
+        <p class="analyze-hint" style="font-size: 13px; color: #666; margin-bottom: 12px; text-align: center;">
+            <strong>Quick:</strong> Instant local pattern scan. <strong>Full:</strong> Deep AI semantic analysis (10-30s).
+        </p>
+        <div class="analyze-buttons">
+            <button id="quick-analyze-btn" class="btn-secondary">Quick Analyze</button>
+            <button id="analyze-btn" class="btn-primary">Analyze Content</button>
         </div>
 
         <!-- Error -->
@@ -297,17 +306,21 @@ Environment="OLLAMA_ORIGINS=*"</pre>
         <div id="speed-modal" class="modal-overlay hidden">
             <div class="modal modal-small">
                 <div class="modal-header">
-                    <h3>Switch to a faster model</h3>
+                    <h3>Speed up your analysis</h3>
                     <button id="btn-close-speed" class="btn-modal-close">&times;</button>
                 </div>
                 <div class="modal-body">
-                    <p>The gpt-oss-120b model (117B parameters) produces the most thorough analysis but can take 30-60 seconds. If speed is more important, switch to the smaller model:</p>
+                    <h4 style="margin-bottom: 8px;">⚡ Instant: Quick Analyze</h4>
+                    <p>Use the <strong>Quick Analyze</strong> button for instant results using local pattern detection only. No API call needed — works offline and gives results in milliseconds.</p>
+                    
+                    <h4 style="margin-top: 16px; margin-bottom: 8px;">🔄 Faster model</h4>
+                    <p>The gpt-oss-120b model (117B parameters) produces thorough analysis but can take 30-60 seconds. For faster results:</p>
                     <ol>
-                        <li>Click <strong>API Settings</strong> at the top of the page</li>
+                        <li>Click <strong>API Settings</strong> at the top</li>
                         <li>Under <strong>Model</strong>, select <strong>gpt-oss-20b (21B params, faster)</strong></li>
                         <li>Click <strong>Analyze Content</strong> again</li>
                     </ol>
-                    <p>The 20b model is roughly 2-3x faster with slightly lower quality. Both are free through Puter.</p>
+                    <p style="font-size: 12px; color: #666;">The 20b model is 2-3x faster with slightly lower quality. Both are free through Puter.</p>
                 </div>
             </div>
         </div>
@@ -433,9 +446,10 @@ sudo systemctl restart ollama</pre>
             <!-- Highlights Tab -->
             <div class="tab-panel" data-tab="highlights">
                 <div class="highlights-legend">
-                    <span class="legend-item"><span class="legend-color legend-ai"></span> Likely AI-generated</span>
-                    <span class="legend-item"><span class="legend-color legend-human"></span> Likely human-written</span>
-                    <span class="legend-item"><span class="legend-color legend-collaboration"></span> Likely collaboration</span>
+                    <span class="legend-item"><span class="legend-color legend-ai"></span> Likely AI</span>
+                    <span class="legend-item"><span class="legend-color legend-human"></span> Likely human</span>
+                    <span class="legend-item"><span class="legend-color legend-collaboration"></span> Collaboration</span>
+                    <span class="legend-item"><span class="legend-color legend-unclear"></span> Unclear</span>
                 </div>
                 <div id="highlighted-content" class="highlighted-content"></div>
                 <div class="btn-row">
@@ -454,9 +468,65 @@ sudo systemctl restart ollama</pre>
 
             <!-- Attestation Section -->
             <div class="attest-section">
-                <h4>Want to prove authorship?</h4>
-                <p>Use <a href="https://attest.ink" target="_blank" rel="noopener noreferrer" style="color:#555;">attest.ink</a> to create a cryptographic attestation of your content's authorship. Attestations provide verifiable proof that can be independently validated, unlike detection tools which only provide probability estimates.</p>
-                <a href="https://attest.ink" target="_blank" rel="noopener noreferrer" class="btn-small">Create attestation on attest.ink</a>
+                <h4>Create Authorship Attestation</h4>
+                <p>Generate a cryptographic attestation for this content based on the analysis. The attestation records the AI/human breakdown and can be independently verified via <a href="https://attest.ink" target="_blank" rel="noopener noreferrer" style="color:#555;">attest.ink</a>.</p>
+                <div class="attest-form">
+                    <div class="form-group" style="margin-bottom: 12px;">
+                        <label for="attest-content-name" style="font-weight: normal; font-size: 13px;">Content Name/Title</label>
+                        <input type="text" id="attest-content-name" placeholder="My Blog Post" style="padding: 8px 10px; font-size: 13px;">
+                    </div>
+                    <div class="form-group" style="margin-bottom: 12px;">
+                        <label for="attest-model" style="font-weight: normal; font-size: 13px;">Authorship Type</label>
+                        <select id="attest-model" style="padding: 8px 10px; font-size: 13px;">
+                            <option value="human">Human Written</option>
+                            <option value="assisted">AI-Assisted (Collaboration)</option>
+                            <option value="ai">AI Generated</option>
+                        </select>
+                        <p id="attest-model-hint" style="font-size: 11px; color: #666; margin-top: 4px;">Options are restricted based on analysis findings.</p>
+                    </div>
+                    <div id="attest-ai-model-group" class="form-group hidden" style="margin-bottom: 12px;">
+                        <label for="attest-ai-model" style="font-weight: normal; font-size: 13px;">AI Model Used</label>
+                        <select id="attest-ai-model" style="padding: 8px 10px; font-size: 13px;">
+                            <option value="ai-assisted">Unknown / Multiple</option>
+                            <option value="gpt-4">GPT-4 (OpenAI)</option>
+                            <option value="gpt-4o">GPT-4o (OpenAI)</option>
+                            <option value="claude-3-opus">Claude 3 Opus (Anthropic)</option>
+                            <option value="claude-3-sonnet">Claude 3 Sonnet (Anthropic)</option>
+                            <option value="claude-opus-4">Claude Opus 4 (Anthropic)</option>
+                            <option value="gemini-pro">Gemini Pro (Google)</option>
+                            <option value="gemini-2">Gemini 2 (Google)</option>
+                            <option value="llama-3">Llama 3 (Meta)</option>
+                            <option value="deepseek">DeepSeek</option>
+                            <option value="mistral">Mistral</option>
+                        </select>
+                        <p style="font-size: 11px; color: #666; margin-top: 4px;">Which AI assisted with this content?</p>
+                    </div>
+                    <div class="form-group" style="margin-bottom: 12px;">
+                        <label for="attest-sign-method" style="font-weight: normal; font-size: 13px;">Signature Method (optional) <span class="help-tooltip-wrapper"><span class="help-tooltip-trigger">?</span><span class="help-tooltip-content"><strong>Ethereum Wallet Signing:</strong> MetaMask uses your private key to sign the attestation locally in your browser. Only the signature and your public wallet address are stored in the attestation. No transaction is broadcast, no gas fees are charged, and your wallet balance is never accessed.<br><br><strong>Password Signing:</strong> You provide a password that derives a cryptographic key using PBKDF2. The key signs the attestation with HMAC-SHA256. Anyone with the same password can verify the signature, but only you know the password.</span></span></label>
+                        <select id="attest-sign-method" style="padding: 8px 10px; font-size: 13px;">
+                            <option value="none">No Signature</option>
+                            <option value="metamask">MetaMask (Ethereum)</option>
+                            <option value="password">Password-Derived Key</option>
+                        </select>
+                        <p style="font-size: 11px; color: #666; margin-top: 4px;">Add a cryptographic signature for stronger verification.</p>
+                    </div>
+                    <div id="attest-password-group" class="form-group hidden" style="margin-bottom: 12px;">
+                        <label for="attest-password" style="font-weight: normal; font-size: 13px;">Password for Signing</label>
+                        <input type="password" id="attest-password" placeholder="Enter signing password" style="padding: 8px 10px; font-size: 13px;">
+                        <p style="font-size: 11px; color: #666; margin-top: 4px;">This password derives a signing key. Use the same password to verify.</p>
+                    </div>
+                    <div class="btn-row">
+                        <button id="btn-create-attestation" class="btn-small">Generate Attestation</button>
+                        <button id="btn-copy-email-header" class="btn-small">Copy Email Header</button>
+                    </div>
+                </div>
+                <div id="attest-result" class="attest-result hidden">
+                    <div id="attest-badge-preview"></div>
+                    <div class="btn-row" style="margin-top: 12px;">
+                        <button id="btn-copy-attest-link" class="btn-small">Copy Verification Link</button>
+                        <button id="btn-copy-attest-badge" class="btn-small">Copy Badge HTML</button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -498,6 +568,7 @@ sudo systemctl restart ollama</pre>
         </div>
     </footer>
 
+    <script src="./js/slopDetector.js"></script>
     <script src="./js/detectionEngine.js"></script>
     <script src="./js/apiClient.js"></script>
     <script src="./js/uiRenderer.js"></script>

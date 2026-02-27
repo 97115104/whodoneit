@@ -1,4 +1,6 @@
+console.log('[DEBUG] apiClient.js loading...');
 const ApiClient = (() => {
+    console.log('[DEBUG] ApiClient IIFE executing...');
     const PROVIDERS = {
         puter: {
             label: 'Puter GPT-OSS',
@@ -523,5 +525,10 @@ const ApiClient = (() => {
         return { ok: true };
     }
 
-    return { analyze, preflightCheck, PROVIDERS };
+    const exports = { analyze, preflightCheck, PROVIDERS };
+    console.log('[DEBUG] ApiClient exports:', Object.keys(exports));
+    console.log('[DEBUG] ApiClient.analyze is:', typeof exports.analyze);
+    return exports;
 })();
+console.log('[DEBUG] ApiClient loaded:', typeof ApiClient, ApiClient ? Object.keys(ApiClient) : 'null');
+console.log('[DEBUG] ApiClient.analyze is:', typeof ApiClient?.analyze);

@@ -372,6 +372,85 @@ textarea {
     opacity: 1;
 }
 
+/* Signing help tooltip */
+.help-tooltip-wrapper {
+    position: relative;
+    display: inline-block;
+}
+
+.help-tooltip-trigger {
+    cursor: pointer;
+    font-size: 11px;
+    color: #555;
+    text-decoration: none;
+    background: #e0e0e0;
+    border-radius: 50%;
+    width: 14px;
+    height: 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    margin-left: 4px;
+}
+
+.help-tooltip-trigger:hover {
+    background: #ccc;
+}
+
+.help-tooltip-content {
+    visibility: hidden;
+    width: 340px;
+    background-color: #333;
+    color: #fff;
+    text-align: left;
+    border-radius: 6px;
+    padding: 12px;
+    position: absolute;
+    z-index: 100;
+    bottom: 125%;
+    left: 50%;
+    margin-left: -170px;
+    opacity: 0;
+    transition: opacity 0.3s;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.help-tooltip-content code {
+    background: rgba(255,255,255,0.15);
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-family: monospace;
+    font-size: 11px;
+}
+
+.help-tooltip-content em {
+    color: #8fc;
+    font-style: normal;
+}
+
+.help-tooltip-content::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    margin-left: -5px;
+    border-width: 5px;
+    border-style: solid;
+    border-color: #333 transparent transparent transparent;
+}
+
+.help-tooltip-wrapper:hover .help-tooltip-content,
+.help-tooltip-content.visible {
+    visibility: visible;
+    opacity: 1;
+}
+
+.help-tooltip-content strong {
+    color: #8fc;
+}
+
 .attest-badge {
     display: inline-block;
     background: #999;

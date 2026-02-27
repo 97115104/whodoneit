@@ -1,4 +1,7 @@
+console.log('[DEBUG] app.js loading...');
 let slowHintTimer = null;
+
+console.log('[DEBUG] Checking initial state - ApiClient:', typeof ApiClient, 'UIRenderer:', typeof UIRenderer, 'DetectionEngine:', typeof DetectionEngine, 'SlopDetector:', typeof SlopDetector);
 
 document.addEventListener('DOMContentLoaded', () => {
     // Detect file:// protocol — Puter SDK needs a web server
@@ -13,9 +16,25 @@ document.addEventListener('DOMContentLoaded', () => {
     UIRenderer.setupTabs();
     UIRenderer.setupCopyButtons();
     UIRenderer.setupDownloadButtons();
-    setupShareContentButton();
     setupUrlFetcher();
     setupOsTabs();
+
+    // Input tabs (Paste, URL, File)
+    const inputTabs = document.querySelectorAll('.input-tab');
+    const tabContents = {
+        paste: document.getElementById('input-tab-paste'),
+        url: document.getElementById('input-tab-url'),
+        file: document.getElementById('input-tab-file')
+    };
+    inputTabs.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const tab = btn.dataset.tab;
+            inputTabs.forEach(t => t.classList.remove('active'));
+            btn.classList.add('active');
+            Object.values(tabContents).forEach(tc => tc.classList.add('hidden'));
+            tabContents[tab].classList.remove('hidden');
+        });
+    });
 
     // How to use modal
     document.getElementById('btn-info').addEventListener('click', () => {
@@ -74,6 +93,17 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('settings-toggle').textContent = '\u25BC API Settings';
     });
 
+    // Show/hide AI model dropdown based on authorship type
+    const attestModelSelect = document.getElementById('attest-model');
+    if (attestModelSelect) {
+        attestModelSelect.addEventListener('change', () => {
+            const aiModelGroup = document.getElementById('attest-ai-model-group');
+            if (aiModelGroup) {
+                aiModelGroup.classList.toggle('hidden', attestModelSelect.value === 'human');
+            }
+        });
+    }
+
     // Settings toggle
     document.getElementById('settings-toggle').addEventListener('click', () => {
         const panel = document.getElementById('settings-panel');
@@ -106,8 +136,81 @@ document.addEventListener('DOMContentLoaded', () => {
         charCount.textContent = contentInput.value.length.toLocaleString();
     });
 
+    // File upload handler
+    const fileUpload = document.getElementById('file-upload');
+    const fileCharCount = document.getElementById('file-char-count');
+    if (fileUpload) {
+        fileUpload.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                let text = event.target.result;
+                // Strip HTML tags if it's an HTML file
+                if (file.name.endsWith('.html') || file.name.endsWith('.htm')) {
+                    const doc = new DOMParser().parseFromString(text, 'text/html');
+                    text = doc.body.textContent || doc.body.innerText || '';
+                }
+                document.getElementById('content-input').value = text;
+                fileCharCount.textContent = text.length.toLocaleString();
+                // Switch to paste tab to show content
+                inputTabs.forEach(t => t.classList.remove('active'));
+                inputTabs[0].classList.add('active');
+                Object.values(tabContents).forEach(tc => tc.classList.add('hidden'));
+                tabContents.paste.classList.remove('hidden');
+                // Update char counter for paste
+                document.getElementById('char-count').textContent = text.length.toLocaleString();
+            };
+            reader.readAsText(file);
+        });
+    }
+
+    // URL fetch handler for unified input
+    const fetchUrlBtn = document.getElementById('fetch-url-btn');
+    if (fetchUrlBtn) {
+        fetchUrlBtn.addEventListener('click', async () => {
+            const urlInput = document.getElementById('url-input');
+            const url = urlInput.value.trim();
+            if (!url) return;
+            try {
+                fetchUrlBtn.disabled = true;
+                fetchUrlBtn.textContent = 'Fetching...';
+                const result = await UrlExtractor.extract(url);
+                let content = '';
+                if (result.title) content = result.title + '\n\n';
+                content += result.content;
+                document.getElementById('content-input').value = content;
+                document.getElementById('char-count').textContent = content.length.toLocaleString();
+                // Show preview in accordion
+                const accordion = document.getElementById('fetched-content-accordion');
+                const fetchedText = document.getElementById('fetched-content-text');
+                if (accordion && fetchedText) {
+                    fetchedText.textContent = content.length > 2000 ? content.slice(0, 2000) + '...' : content;
+                    accordion.classList.remove('hidden');
+                }
+                // Switch to paste tab to show content
+                inputTabs.forEach(t => t.classList.remove('active'));
+                inputTabs[0].classList.add('active');
+                Object.values(tabContents).forEach(tc => tc.classList.add('hidden'));
+                tabContents.paste.classList.remove('hidden');
+            } catch (err) {
+                alert('Failed to fetch URL: ' + err.message);
+            } finally {
+                fetchUrlBtn.disabled = false;
+                fetchUrlBtn.textContent = 'Fetch Content';
+            }
+        });
+    }
+
     // Analyze button
     document.getElementById('analyze-btn').addEventListener('click', handleAnalyze);
+    
+    // Quick Analyze button (local only, instant)
+    const quickAnalyzeBtn = document.getElementById('quick-analyze-btn');
+    if (quickAnalyzeBtn) {
+        quickAnalyzeBtn.addEventListener('click', handleQuickAnalyze);
+    }
 
     // Ctrl/Cmd+Enter to analyze
     contentInput.addEventListener('keydown', (e) => {
@@ -118,6 +221,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // URL routing
     handleUrlRouting();
+    
+    // Setup attestation functionality
+    setupAttestationButtons();
+    
+    // Setup API query parameter handling
+    setupApiQueryParams();
 });
 
 // --- URL Routing ---
@@ -192,127 +301,72 @@ async function handleUrlRouting() {
     }
 }
 
-// --- Share Button ---
-
-function setupShareContentButton() {
-    const shareModal = document.getElementById('share-modal');
-
-    document.getElementById('btn-share-content').addEventListener('click', () => {
-        const content = document.getElementById('content-input').value.trim();
-        if (!content) {
-            UIRenderer.showError('Enter content first, then share it.');
-            return;
-        }
-        document.getElementById('share-status').classList.add('hidden');
-        shareModal.classList.remove('hidden');
-    });
-
-    document.getElementById('btn-close-share').addEventListener('click', () => {
-        shareModal.classList.add('hidden');
-    });
-    shareModal.addEventListener('click', (e) => {
-        if (e.target === e.currentTarget) {
-            shareModal.classList.add('hidden');
-        }
-    });
-
-    function buildShareUrl(includeEnter) {
-        const content = document.getElementById('content-input').value.trim();
-        const base = window.location.origin + window.location.pathname;
-        let link = base + '?content=' + encodeURIComponent(content);
-        if (includeEnter) link += '&enter';
-        return link;
-    }
-
-    function showShareStatus(text) {
-        const status = document.getElementById('share-status');
-        status.textContent = text;
-        status.classList.remove('hidden');
-        setTimeout(() => { status.classList.add('hidden'); }, 2000);
-    }
-
-    document.getElementById('share-url').addEventListener('click', () => {
-        navigator.clipboard.writeText(buildShareUrl(false)).then(() => {
-            showShareStatus('Link copied!');
-        });
-    });
-
-    document.getElementById('share-url-enter').addEventListener('click', () => {
-        navigator.clipboard.writeText(buildShareUrl(true)).then(() => {
-            showShareStatus('Link copied with auto-analyze!');
-        });
-    });
-}
-
 // --- URL Fetcher ---
 
 function setupUrlFetcher() {
+    // Setup accordion toggle for fetched content
+    const accordionToggle = document.getElementById('toggle-fetched-content');
+    const accordionContent = document.getElementById('fetched-content-preview');
+    
+    if (accordionToggle && accordionContent) {
+        accordionToggle.addEventListener('click', () => {
+            const isHidden = accordionContent.classList.contains('hidden');
+            accordionContent.classList.toggle('hidden');
+            const icon = accordionToggle.querySelector('.accordion-icon');
+            if (icon) {
+                icon.textContent = isHidden ? '▼' : '▶';
+            }
+        });
+    }
+}
+
+// Fetch URL content before analysis (called from handleAnalyze/handleQuickAnalyze)
+async function fetchUrlIfNeeded() {
     const urlInput = document.getElementById('url-input');
-    const fetchBtn = document.getElementById('fetch-url-btn');
-    const fetchAnalyzeBtn = document.getElementById('fetch-analyze-btn');
     const contentInput = document.getElementById('content-input');
     const charCount = document.getElementById('char-count');
-
-    async function handleFetch(andAnalyze = false) {
-        const url = urlInput.value.trim();
-        if (!url) {
-            UIRenderer.showError('Please enter a URL to fetch.');
-            return;
+    const accordion = document.getElementById('fetched-content-accordion');
+    const fetchedText = document.getElementById('fetched-content-text');
+    
+    const url = urlInput.value.trim();
+    const existingContent = contentInput.value.trim();
+    
+    // Only fetch if URL is provided and content is empty
+    if (!url) return true;
+    if (existingContent) return true; // Content already present, don't overwrite
+    
+    UIRenderer.hideError();
+    
+    try {
+        updateLoadingStatus('Fetching URL...', 'Extracting content from ' + new URL(url).hostname);
+        
+        const result = await UrlExtractor.extract(url);
+        
+        // Build content
+        let content = '';
+        if (result.title) {
+            content = result.title + '\n\n';
         }
-
-        // Disable buttons and show loading state
-        fetchBtn.disabled = true;
-        fetchAnalyzeBtn.disabled = true;
-        const originalFetchText = fetchBtn.textContent;
-        const originalAnalyzeText = fetchAnalyzeBtn.textContent;
-        fetchBtn.textContent = 'Fetching...';
-        fetchAnalyzeBtn.textContent = 'Fetching...';
-        UIRenderer.hideError();
-
-        try {
-            const result = await UrlExtractor.extract(url);
-            
-            // Populate content input
-            let content = '';
-            if (result.title) {
-                content = result.title + '\n\n';
-            }
-            content += result.content;
-            
-            contentInput.value = content;
-            charCount.textContent = content.length.toLocaleString();
-            
-            // Clear URL input
-            urlInput.value = '';
-            
-            if (andAnalyze) {
-                // Trigger analysis
-                handleAnalyze();
-            } else {
-                // Scroll to content
-                contentInput.focus();
-                contentInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }
-        } catch (err) {
-            UIRenderer.showError(err.message);
-        } finally {
-            fetchBtn.disabled = false;
-            fetchAnalyzeBtn.disabled = false;
-            fetchBtn.textContent = originalFetchText;
-            fetchAnalyzeBtn.textContent = originalAnalyzeText;
+        content += result.content;
+        
+        // Populate content input
+        contentInput.value = content;
+        charCount.textContent = content.length.toLocaleString();
+        
+        // Show fetched content in accordion
+        if (accordion && fetchedText) {
+            fetchedText.textContent = content.length > 2000 ? content.slice(0, 2000) + '...' : content;
+            accordion.classList.remove('hidden');
         }
+        
+        // Clear URL input
+        urlInput.value = '';
+        
+        return true;
+    } catch (err) {
+        UIRenderer.showError('Failed to fetch URL: ' + err.message);
+        return false;
     }
-
-    fetchBtn.addEventListener('click', () => handleFetch(false));
-    fetchAnalyzeBtn.addEventListener('click', () => handleFetch(true));
-
-    // Enter key to fetch
-    urlInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            handleFetch(false);
-        }
-    });
 }
 
 // --- Provider Configuration ---
@@ -464,7 +518,112 @@ function showPuterFallback(reason) {
     document.getElementById('puter-fallback-modal').classList.remove('hidden');
 }
 
+// Quick analyze - local pattern detection only (instant results)
+async function handleQuickAnalyze() {
+    console.log('[DEBUG] handleQuickAnalyze called (local only)');
+    
+    // Auto-fetch URL if needed
+    const urlInput = document.getElementById('url-input');
+    if (urlInput.value.trim()) {
+        document.getElementById('analyze-btn').disabled = true;
+        document.getElementById('quick-analyze-btn').disabled = true;
+        UIRenderer.showLoading();
+        const fetched = await fetchUrlIfNeeded();
+        UIRenderer.hideLoading();
+        if (!fetched) {
+            document.getElementById('analyze-btn').disabled = false;
+            document.getElementById('quick-analyze-btn').disabled = false;
+            return;
+        }
+    }
+    
+    const content = document.getElementById('content-input').value.trim();
+
+    UIRenderer.hideError();
+
+    if (!content) {
+        UIRenderer.showError('Please enter content to analyze or provide a URL.');
+        return;
+    }
+
+    if (content.length < 50) {
+        UIRenderer.showError('Please enter at least 50 characters for meaningful analysis.');
+        return;
+    }
+
+    // Disable buttons during analysis
+    document.getElementById('analyze-btn').disabled = true;
+    document.getElementById('quick-analyze-btn').disabled = true;
+
+    // Run local slop detection
+    if (typeof SlopDetector === 'undefined') {
+        UIRenderer.showError('Local detector not loaded. Please refresh the page.');
+        document.getElementById('analyze-btn').disabled = false;
+        document.getElementById('quick-analyze-btn').disabled = false;
+        return;
+    }
+
+    const slopAnalysis = SlopDetector.analyze(content);
+    const classification = SlopDetector.classify(slopAnalysis.score);
+    
+    // Build result object compatible with UIRenderer
+    const result = {
+        detection_score: slopAnalysis.score,
+        human_probability: 100 - slopAnalysis.score,
+        ai_probability: slopAnalysis.score,
+        classification: classification.toLowerCase(),
+        confidence: slopAnalysis.confidence,
+        summary: slopAnalysis.explanation,
+        ai_indicators: slopAnalysis.indicators.ai.slice(0, 5).map(i => 
+            `${i.type}${i.examples ? ': ' + i.examples : ''} (${i.count}x)`
+        ),
+        human_indicators: slopAnalysis.indicators.human.slice(0, 5).map(i => 
+            `${i.type}${i.examples ? ': ' + i.examples : ''} (${i.count}x)`
+        ),
+        highlighted_passages: SlopDetector.generateHighlightedPassages(content, slopAnalysis),
+        local_analysis: {
+            slop_score: slopAnalysis.score,
+            confidence: slopAnalysis.confidence,
+            explanation: slopAnalysis.explanation,
+            pattern_counts: slopAnalysis.metrics?.patternCounts,
+            raw_scores: slopAnalysis.rawScores
+        },
+        analysis_note: '⚡ Quick analysis using local pattern detection only. For deeper semantic analysis, use full "Analyze Content".',
+        quick_mode: true
+    };
+
+    // Store for attestation
+    window.lastAnalysisResult = result;
+    window.lastAnalyzedContent = content;
+
+    // Render results
+    UIRenderer.renderOutput(result, content);
+    updateAttestationOptions(result);
+
+    // Re-enable buttons
+    document.getElementById('analyze-btn').disabled = false;
+    document.getElementById('quick-analyze-btn').disabled = false;
+}
+
 async function handleAnalyze() {
+    console.log('[DEBUG] handleAnalyze called');
+    console.log('[DEBUG] Checking globals - ApiClient:', typeof ApiClient, 'DetectionEngine:', typeof DetectionEngine, 'SlopDetector:', typeof SlopDetector);
+    
+    // Auto-fetch URL if needed
+    const urlInput = document.getElementById('url-input');
+    if (urlInput.value.trim()) {
+        document.getElementById('analyze-btn').disabled = true;
+        document.getElementById('quick-analyze-btn').disabled = true;
+        UIRenderer.showLoading();
+        const fetched = await fetchUrlIfNeeded();
+        if (!fetched) {
+            UIRenderer.hideLoading();
+            document.getElementById('analyze-btn').disabled = false;
+            document.getElementById('quick-analyze-btn').disabled = false;
+            return;
+        }
+    }
+    
     const apiMode = document.getElementById('api-mode').value;
     const content = document.getElementById('content-input').value.trim();
 
@@ -482,7 +641,7 @@ async function handleAnalyze() {
     }
 
     if (!content) {
-        UIRenderer.showError('Please enter content to analyze.');
+        UIRenderer.showError('Please enter content to analyze or provide a URL.');
         return;
     }
 
@@ -517,7 +676,6 @@ async function handleAnalyze() {
     // Show loading
     UIRenderer.showLoading();
     document.getElementById('analyze-btn').disabled = true;
-    document.getElementById('share-content-row').classList.add('hidden');
 
     // Preflight check for local/custom endpoints
     if (apiMode === 'ollama' || apiMode === 'custom') {
@@ -527,7 +685,6 @@ async function handleAnalyze() {
         if (!check.ok) {
             UIRenderer.showError(check.error);
             document.getElementById('analyze-btn').disabled = false;
-            document.getElementById('share-content-row').classList.remove('hidden');
             return;
         }
 
@@ -541,8 +698,22 @@ async function handleAnalyze() {
     }
 
     // Build detection prompt
+    updateLoadingStatus('Running local analysis...', 'Detecting AI patterns with local heuristics');
+    
+    // Run local slop detection first
+    let slopAnalysis = null;
+    if (typeof SlopDetector !== 'undefined') {
+        slopAnalysis = DetectionEngine.runLocalAnalysis(content);
+        if (slopAnalysis) {
+            const localClass = SlopDetector.classify(slopAnalysis.score);
+            updateLoadingStatus('Local analysis complete', 
+                `Slop score: ${slopAnalysis.score}/100 (${localClass}) — now running semantic analysis`);
+            await new Promise(r => setTimeout(r, 300));
+        }
+    }
+    
     updateLoadingStatus('Analyzing content...', 'Building detection analysis for ' + (apiMode === 'puter' ? 'Puter' : apiMode === 'ollama' ? 'Ollama' : apiMode));
-    const { system, user } = DetectionEngine.buildDetectionPrompt(content);
+    const { system, user } = DetectionEngine.buildDetectionPrompt(content, slopAnalysis);
     params.systemMessage = system;
     params.userMessage = user;
 
@@ -572,7 +743,30 @@ async function handleAnalyze() {
     }, 4000);
 
     try {
-        const result = await ApiClient.analyze(params);
+        console.log('[DEBUG] About to call ApiClient.analyze');
+        console.log('[DEBUG] ApiClient:', ApiClient);
+        console.log('[DEBUG] ApiClient.analyze:', typeof ApiClient?.analyze);
+        console.log('[DEBUG] params:', params);
+        
+        if (typeof ApiClient?.analyze !== 'function') {
+            throw new Error('ApiClient.analyze is not a function. ApiClient is: ' + JSON.stringify(Object.keys(ApiClient || {})));
+        }
+        
+        let result = await ApiClient.analyze(params);
+        console.log('[DEBUG] API result received:', result);
+        
+        // Enhance with local slop analysis
+        if (slopAnalysis) {
+            result = DetectionEngine.enhanceWithLocalAnalysis(result, slopAnalysis, content);
+        }
+        
+        // Store result for attestation
+        window.lastAnalysisResult = result;
+        window.lastAnalyzedContent = content;
+        
+        // Update attestation options based on classification
+        updateAttestationOptions(result);
+        
         UIRenderer.renderOutput(result, content);
     } catch (err) {
         if (err.puterFallback) {
@@ -583,7 +777,511 @@ async function handleAnalyze() {
         clearTimeout(slowHintTimer);
         document.getElementById('slow-hint').classList.add('hidden');
         document.getElementById('analyze-btn').disabled = false;
-        document.getElementById('share-content-row').classList.remove('hidden');
         updateLoadingStatus('Analyzing content...', 'Examining vocabulary, structure, and stylistic patterns');
     }
 }
+
+// --- Attestation Functions ---
+
+function setupAttestationButtons() {
+    const createBtn = document.getElementById('btn-create-attestation');
+    const copyLinkBtn = document.getElementById('btn-copy-attest-link');
+    const copyBadgeBtn = document.getElementById('btn-copy-attest-badge');
+    const copyEmailHeaderBtn = document.getElementById('btn-copy-email-header');
+    const signMethodSelect = document.getElementById('attest-sign-method');
+    
+    if (createBtn) {
+        createBtn.addEventListener('click', handleCreateAttestation);
+    }
+    if (copyLinkBtn) {
+        copyLinkBtn.addEventListener('click', handleCopyAttestLink);
+    }
+    if (copyBadgeBtn) {
+        copyBadgeBtn.addEventListener('click', handleCopyAttestBadge);
+    }
+    if (copyEmailHeaderBtn) {
+        copyEmailHeaderBtn.addEventListener('click', handleCopyEmailHeader);
+    }
+    
+    // Toggle password field visibility based on signature method
+    if (signMethodSelect) {
+        signMethodSelect.addEventListener('change', () => {
+            const passwordGroup = document.getElementById('attest-password-group');
+            if (signMethodSelect.value === 'password') {
+                passwordGroup.classList.remove('hidden');
+            } else {
+                passwordGroup.classList.add('hidden');
+            }
+        });
+    }
+}
+
+async function handleCreateAttestation() {
+    console.log('[DEBUG] handleCreateAttestation called');
+    const result = window.lastAnalysisResult;
+    const content = window.lastAnalyzedContent;
+    
+    if (!result) {
+        UIRenderer.showError('Please analyze content first before creating an attestation.');
+        return;
+    }
+    
+    const contentName = document.getElementById('attest-content-name').value.trim() || 'Analyzed Content';
+    const signMethod = document.getElementById('attest-sign-method')?.value || 'none';
+    
+    // Determine allowed attestation type based on analysis (auto-select, don't block)
+    const allowedType = getAttestationTypeFromClassification(result.classification, result.detection_score);
+    const authorshipType = allowedType; // Use the allowed type directly
+    
+    console.log('[DEBUG] Creating attestation:', { 
+        classification: result.classification, 
+        score: result.detection_score, 
+        allowedType, 
+        authorshipType 
+    });
+    
+    // Map authorship to attest.ink role
+    let role = 'collaborated';
+    if (authorshipType === 'human') role = 'authored';
+    if (authorshipType === 'ai') role = 'generated';
+    
+    // Determine model value for attest.ink (required field)
+    let modelValue = 'human';
+    if (authorshipType !== 'human') {
+        const aiModelSelect = document.getElementById('attest-ai-model');
+        modelValue = aiModelSelect?.value || 'ai-assisted';
+    }
+    
+    // Generate content hash using SHA-256
+    const contentHash = await generateContentHash(content);
+    
+    // Create attestation data
+    const attestationData = {
+        version: '2.0',
+        id: generateAttestationId(),
+        content_name: contentName,
+        content_hash: 'sha256:' + contentHash,
+        model: modelValue,
+        timestamp: new Date().toISOString(),
+        platform: 'whodoneit',
+        authorship_type: authorshipType,
+        role: role,
+        document_type: 'text',
+        analysis: {
+            detection_score: result.detection_score,
+            human_probability: result.human_probability,
+            ai_probability: result.ai_probability,
+            classification: result.classification,
+            confidence: result.confidence,
+            local_slop_score: result.local_analysis?.slop_score
+        }
+    };
+    
+    // Handle signing based on selected method
+    let signature = null;
+    let signerAddress = null;
+    
+    if (signMethod === 'metamask') {
+        try {
+            const signResult = await signWithMetaMask(attestationData);
+            signature = signResult.signature;
+            signerAddress = signResult.address;
+            attestationData.signature = {
+                method: 'ethereum',
+                address: signerAddress,
+                signature: signature
+            };
+        } catch (err) {
+            UIRenderer.showError('MetaMask signing failed: ' + err.message);
+            return;
+        }
+    } else if (signMethod === 'password') {
+        const password = document.getElementById('attest-password')?.value;
+        if (!password) {
+            UIRenderer.showError('Please enter a password for signing.');
+            return;
+        }
+        try {
+            const signResult = await signWithPassword(attestationData, password);
+            signature = signResult.signature;
+            attestationData.signature = {
+                method: 'password-hmac',
+                signature: signature
+            };
+        } catch (err) {
+            UIRenderer.showError('Password signing failed: ' + err.message);
+            return;
+        }
+    }
+    
+    // Encode attestation data
+    const encodedData = btoa(JSON.stringify(attestationData));
+    const verifyUrl = `https://attest.ink/verify/?data=${encodeURIComponent(encodedData)}`;
+    
+    // Store for copy buttons
+    window.lastAttestation = {
+        data: attestationData,
+        encodedData,
+        verifyUrl,
+        content,
+        result
+    };
+    
+    // Show result
+    const resultDiv = document.getElementById('attest-result');
+    const previewDiv = document.getElementById('attest-badge-preview');
+    
+    // Create badge preview
+    const badgeText = authorshipType === 'human' ? 'Human Written' : 
+                      authorshipType === 'ai' ? 'AI Generated' : 'Human + AI';
+    const badgeColor = authorshipType === 'human' ? '#2e7d32' : 
+                       authorshipType === 'ai' ? '#c62828' : '#f57c00';
+    
+    let signedLabel = '';
+    let signedInfo = '';
+    if (signature) {
+        if (signMethod === 'metamask' && signerAddress) {
+            signedLabel = '<span style="font-size:11px;opacity:0.8;"> — Wallet Signed</span>';
+            signedInfo = `<br>• Signature: Ethereum wallet <code style="font-size:11px;background:#f0f0f0;padding:2px 4px;border-radius:3px;">${signerAddress}</code>`;
+        } else if (signMethod === 'password') {
+            signedLabel = '<span style="font-size:11px;opacity:0.8;"> — Password Signed</span>';
+            signedInfo = '<br>• Signature: User-provided password (HMAC-SHA256)';
+        } else {
+            signedLabel = '<span style="font-size:11px;opacity:0.8;"> — Signed via whodoneit</span>';
+            signedInfo = '<br>• Signature: Signed via whodoneit (no wallet or password)';
+        }
+    } else {
+        signedLabel = '<span style="font-size:11px;opacity:0.8;"> — Unsigned</span>';
+        signedInfo = '<br>• Signature: None (unsigned attestation)';
+    }
+    
+    previewDiv.innerHTML = `
+        <a href="${verifyUrl}" target="_blank" rel="noopener noreferrer" style="background: ${badgeColor};">
+            ${badgeText} — Verified${signedLabel}
+        </a>
+        <div class="attest-info">
+            <strong>Attestation Created</strong><br>
+            • Content: ${contentName}<br>
+            • Classification: ${result.classification} (${result.detection_score}/100)<br>
+            • ID: ${attestationData.id}<br>
+            • Hash: <code style="font-size:10px;background:#f0f0f0;padding:1px 4px;border-radius:2px;">${attestationData.content_hash.slice(0,20)}...</code>${signedInfo}<br>
+            <small>Click the badge to verify, or use the buttons below to copy.</small>
+        </div>
+    `;
+    
+    resultDiv.classList.remove('hidden');
+}
+
+// Sign attestation data with MetaMask (Ethereum personal_sign)
+async function signWithMetaMask(attestationData) {
+    if (typeof window.ethereum === 'undefined') {
+        throw new Error('MetaMask is not installed. Please install the MetaMask extension.');
+    }
+    
+    // Request account access
+    const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+    if (!accounts || accounts.length === 0) {
+        throw new Error('No accounts found. Please connect MetaMask.');
+    }
+    
+    const address = accounts[0];
+    const message = JSON.stringify(attestationData, null, 2);
+    const msgHex = '0x' + Array.from(new TextEncoder().encode(message))
+        .map(b => b.toString(16).padStart(2, '0')).join('');
+    
+    const signature = await window.ethereum.request({
+        method: 'personal_sign',
+        params: [msgHex, address]
+    });
+    
+    return { signature, address };
+}
+
+// Sign attestation data with password-derived key (HMAC-SHA256)
+async function signWithPassword(attestationData, password) {
+    const encoder = new TextEncoder();
+    const message = JSON.stringify(attestationData);
+    
+    // Derive key from password using PBKDF2
+    const passwordKey = await crypto.subtle.importKey(
+        'raw',
+        encoder.encode(password),
+        { name: 'PBKDF2' },
+        false,
+        ['deriveBits', 'deriveKey']
+    );
+    
+    const hmacKey = await crypto.subtle.deriveKey(
+        {
+            name: 'PBKDF2',
+            salt: encoder.encode('whodoneit-attestation-v1'),
+            iterations: 100000,
+            hash: 'SHA-256'
+        },
+        passwordKey,
+        { name: 'HMAC', hash: 'SHA-256' },
+        false,
+        ['sign']
+    );
+    
+    // Sign the message
+    const signatureBuffer = await crypto.subtle.sign(
+        'HMAC',
+        hmacKey,
+        encoder.encode(message)
+    );
+    
+    // Convert to hex string
+    const signature = Array.from(new Uint8Array(signatureBuffer))
+        .map(b => b.toString(16).padStart(2, '0')).join('');
+    
+    return { signature };
+}
+
+// Determine allowed attestation type based on analysis classification
+function getAttestationTypeFromClassification(classification, score) {
+    if (classification === 'human' || score <= 25) {
+        return 'human';
+    } else if (classification === 'ai' || score >= 75) {
+        return 'ai';
+    } else {
+        return 'assisted';
+    }
+}
+
+// Update attestation dropdown to only show the allowed option based on analysis
+function updateAttestationOptions(result) {
+    const select = document.getElementById('attest-model');
+    const hint = document.getElementById('attest-model-hint');
+    const aiModelGroup = document.getElementById('attest-ai-model-group');
+    if (!select || !result) return;
+    
+    const allowedType = getAttestationTypeFromClassification(result.classification, result.detection_score);
+    
+    // Disable options that don't match the analysis
+    Array.from(select.options).forEach(option => {
+        if (option.value === allowedType) {
+            option.disabled = false;
+            option.selected = true;
+        } else {
+            option.disabled = true;
+        }
+    });
+    
+    // Show/hide AI model dropdown based on authorship type
+    if (aiModelGroup) {
+        aiModelGroup.classList.toggle('hidden', allowedType === 'human');
+    }
+    
+    // Update hint text
+    const typeLabels = {
+        human: 'Human Written',
+        assisted: 'AI-Assisted (Collaboration)',
+        ai: 'AI Generated'
+    };
+    
+    if (hint) {
+        hint.textContent = `Based on analysis (score: ${result.detection_score}/100), only "${typeLabels[allowedType]}" is allowed.`;
+    }
+}
+
+function generateAttestationId() {
+    const date = new Date();
+    const dateStr = date.toISOString().split('T')[0];
+    const randomStr = Math.random().toString(36).substring(2, 8);
+    return `${dateStr}-${randomStr}`;
+}
+
+// Generate SHA-256 hash of content
+async function generateContentHash(content) {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(content);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function handleCopyAttestLink() {
+    if (!window.lastAttestation) {
+        UIRenderer.showError('Please create an attestation first.');
+        return;
+    }
+    
+    navigator.clipboard.writeText(window.lastAttestation.verifyUrl).then(() => {
+        const btn = document.getElementById('btn-copy-attest-link');
+        const original = btn.textContent;
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.textContent = original; }, 1500);
+    });
+}
+
+function handleCopyAttestBadge() {
+    if (!window.lastAttestation) {
+        UIRenderer.showError('Please create an attestation first.');
+        return;
+    }
+    
+    const { data, verifyUrl } = window.lastAttestation;
+    const badgeText = data.authorship_type === 'human' ? 'Human Written' : 
+                      data.authorship_type === 'ai' ? 'AI Generated' : 'Human + AI';
+    
+    // HTML badge code
+    const badgeHtml = `<a href="${verifyUrl}" target="_blank" rel="noopener noreferrer" style="display:inline-block;background:#333;color:#fff;padding:5px 10px;border-radius:4px;font-size:12px;text-decoration:none;">${badgeText}</a>`;
+    
+    navigator.clipboard.writeText(badgeHtml).then(() => {
+        const btn = document.getElementById('btn-copy-attest-badge');
+        const original = btn.textContent;
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.textContent = original; }, 1500);
+    });
+}
+
+function handleCopyEmailHeader() {
+    const result = window.lastAnalysisResult;
+    
+    if (!result) {
+        UIRenderer.showError('Please analyze content first.');
+        return;
+    }
+    
+    // Generate email header format
+    const header = generateEmailHeader(result);
+    
+    navigator.clipboard.writeText(header).then(() => {
+        const btn = document.getElementById('btn-copy-email-header');
+        const original = btn.textContent;
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.textContent = original; }, 1500);
+    });
+}
+
+function generateEmailHeader(result) {
+    const classification = result.classification?.toUpperCase() || 'UNKNOWN';
+    const humanPct = result.human_probability || 0;
+    const aiPct = result.ai_probability || 0;
+    const score = result.detection_score || 50;
+    const confidence = result.confidence || 'unknown';
+    const localScore = result.local_analysis?.slop_score;
+    
+    let header = `═══════════════════════════════════════════════════════
+📊 AI CONTENT ANALYSIS (via whodoneit)
+═══════════════════════════════════════════════════════
+Classification: ${classification}
+Detection Score: ${score}/100
+Human: ${humanPct}% | AI: ${aiPct}%
+Confidence: ${confidence}`;
+
+    if (localScore !== undefined) {
+        header += `\nLocal Slop Score: ${localScore}/100`;
+    }
+    
+    header += `
+───────────────────────────────────────────────────────
+${result.summary || 'No summary available.'}
+═══════════════════════════════════════════════════════
+`;
+
+    return header;
+}
+
+// --- API Query Parameter Support ---
+
+function setupApiQueryParams() {
+    // Check for API mode parameters
+    const params = new URLSearchParams(window.location.search);
+    const apiMode = params.get('api');
+    const format = params.get('format');
+    
+    // If api=json is specified, we'll output JSON to console after analysis
+    if (apiMode === 'json' || format === 'json') {
+        window.apiOutputMode = 'json';
+    }
+    
+    // Check for callback URL
+    const callback = params.get('callback');
+    if (callback) {
+        window.apiCallback = callback;
+    }
+}
+
+// Expose API function for programmatic use
+window.whodoneitAnalyze = async function(content, options = {}) {
+    if (!content || content.length < 50) {
+        return { error: 'Content must be at least 50 characters.' };
+    }
+    
+    // Run local analysis
+    let slopAnalysis = null;
+    if (typeof SlopDetector !== 'undefined') {
+        slopAnalysis = SlopDetector.analyze(content);
+    }
+    
+    // If quick mode, return local analysis only
+    if (options.quick || options.localOnly) {
+        return {
+            success: true,
+            mode: 'local',
+            detection_score: slopAnalysis?.score || 50,
+            classification: SlopDetector?.classify(slopAnalysis?.score) || 'collaboration',
+            confidence: slopAnalysis?.confidence || 'low',
+            human_probability: 100 - (slopAnalysis?.score || 50),
+            ai_probability: slopAnalysis?.score || 50,
+            summary: slopAnalysis?.explanation || 'Local analysis only.',
+            ai_indicators: slopAnalysis?.indicators?.ai?.map(i => i.type) || [],
+            human_indicators: slopAnalysis?.indicators?.human?.map(i => i.type) || [],
+            local_analysis: slopAnalysis
+        };
+    }
+    
+    // Full analysis requires API call - use existing analyze function
+    // This is a simplified version for external use
+    try {
+        const apiMode = options.apiMode || 'puter';
+        const { system, user } = DetectionEngine.buildDetectionPrompt(content, slopAnalysis);
+        
+        const params = {
+            systemMessage: system,
+            userMessage: user,
+            apiMode,
+            apiKey: options.apiKey,
+            model: options.model,
+            puterModel: options.puterModel
+        };
+        
+        let result = await ApiClient.analyze(params);
+        
+        if (slopAnalysis) {
+            result = DetectionEngine.enhanceWithLocalAnalysis(result, slopAnalysis, content);
+        }
+        
+        return { success: true, mode: 'full', ...result };
+    } catch (err) {
+        return { error: err.message, local_analysis: slopAnalysis };
+    }
+};
+
+// Generate email header for external content
+window.whodoneitEmailHeader = function(content) {
+    if (!content || content.length < 50) {
+        return 'Content too short for analysis.';
+    }
+    
+    const slopAnalysis = SlopDetector?.analyze(content);
+    if (!slopAnalysis) {
+        return 'Slop detector not available.';
+    }
+    
+    const classification = SlopDetector.classify(slopAnalysis.score);
+    
+    const result = {
+        classification,
+        detection_score: slopAnalysis.score,
+        human_probability: 100 - slopAnalysis.score,
+        ai_probability: slopAnalysis.score,
+        confidence: slopAnalysis.confidence,
+        summary: slopAnalysis.explanation,
+        local_analysis: slopAnalysis
+    };
+    
+    return generateEmailHeader(result);
+};
